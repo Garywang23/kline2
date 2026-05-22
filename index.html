@@ -342,7 +342,7 @@ function trigPrices(d){
 function cfmSigs(d){
   const sigs=[];if(!d.rt||!d.ys||!d.dl)return sigs;
   const {rt,ys,dl,st,openPct}=d;
-  const pct=rt.pct,pb=st?st.pb:d.pb,rb=st?st.rb:d.rb;
+  const pct=rt.pct,pb=d.pb,rb=d.rb;
   const a5=!fin(dl.ma5)||rt.last>=dl.ma5, a10=!fin(dl.ma10)||rt.last>=dl.ma10;
   // 昨日不是强势 → 不触发任何信号
   if(!ys.strong)return sigs;
@@ -426,8 +426,10 @@ function calc(c){
   }
 
   d.st=mStats(tr);
-  if(d.st){d.pb=d.st.pb;d.rb=d.st.rb;d.ht=d.st.ht;d.lt=d.st.lt}
-  else{d.pb=rt.hi?((rt.last-rt.hi)/rt.hi*100):0;d.rb=rt.lo?((rt.last-rt.lo)/rt.lo*100):0;d.ht='';d.lt=''}
+  // pb/rb 用实时 hi/lo 算 (更准；分时1分钟K可能漏开盘瞬间极值), 时间标签仍来自分时
+  d.pb=fin(rt.hi)&&rt.hi?((rt.last-rt.hi)/rt.hi*100):0;
+  d.rb=fin(rt.lo)&&rt.lo?((rt.last-rt.lo)/rt.lo*100):0;
+  d.ht=d.st?.ht||'';d.lt=d.st?.lt||'';
 
   d.ys=yState(kl,c);
   d.dl=dMet(kl,rt.last);

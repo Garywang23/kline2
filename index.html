@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="referrer" content="no-referrer">
 <title>A股实时监控面板</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -58,9 +59,6 @@ tr:hover{background:rgba(30,45,80,0.6)}
 /* 底部 */
 .ft{background:#0d0d1a;padding:4px 12px;display:flex;justify-content:space-between;color:#888;font-size:11px;border-top:1px solid #333}
 /* 闪烁 */
-@keyframes fu{0%{background:rgba(255,68,68,0.3)}100%{background:transparent}}
-@keyframes fd{0%{background:rgba(0,204,102,0.3)}100%{background:transparent}}
-.fu{animation:fu .8s}.fd{animation:fd .8s}
 /* 亮色 */
 body.lt{background:#f5f5f5;color:#333}
 .lt .top-alert{background:#fff;border-color:#ddd}.lt .ctrl{background:#fff;border-color:#ddd}
@@ -155,7 +153,7 @@ const SIG = {
 const DEDUP = {'涨停':3600000,'炸板':600000,'临近涨停':480000,'弱转强':1200000,'分歧承接':900000,'破5日线':1800000,'破10日线':3600000,'高回撤':600000,'大跌':900000,_d:480000};
 
 const DEF = [{code:'002208'}];
-let WL=[], SD={}, AH=[], AF={}, timer=null, sortK=null, sortD='desc', fc=0, LP={}, first=true;
+let WL=[], SD={}, AH=[], AF={}, timer=null, sortK=null, sortD='desc', fc=0, first=true;
 
 // ---- 工具 ----
 const fin = v => Number.isFinite(v);
@@ -167,7 +165,7 @@ const fs = v => !fin(v)?'--':v>=1e8?(v/1e8).toFixed(2)+'亿股':v>=1e4?(v/1e4).t
 
 // ---- JSONP ----
 let jid=0;
-function jp(url,t=8000){return new Promise((ok,no)=>{const n='_j'+(++jid)+'_'+Date.now(),s=document.createElement('script');s.setAttribute('data-cfasync','false');let d=false;window[n]=r=>{if(d)return;d=true;ok(r);cl()};s.onerror=()=>{if(d)return;d=true;no(new Error('jp'));cl()};const tm=setTimeout(()=>{if(d)return;d=true;no(new Error('timeout'));cl()},t);function cl(){clearTimeout(tm);delete window[n];s.parentNode&&s.parentNode.removeChild(s)}s.src=url+(url.includes('?')?'&':'?')+'cb='+n+'&_='+Date.now();document.head.appendChild(s)})}
+function jp(url,t=8000){return new Promise((ok,no)=>{const n='_j'+(++jid)+'_'+Date.now(),s=document.createElement('script');s.setAttribute('data-cfasync','false');s.referrerPolicy='no-referrer';let d=false;window[n]=r=>{if(d)return;d=true;ok(r);cl()};s.onerror=()=>{if(d)return;d=true;no(new Error('jp'));cl()};const tm=setTimeout(()=>{if(d)return;d=true;no(new Error('timeout'));cl()},t);function cl(){clearTimeout(tm);delete window[n];s.parentNode&&s.parentNode.removeChild(s)}s.src=url+(url.includes('?')?'&':'?')+'cb='+n+'&_='+Date.now();document.head.appendChild(s)})}
 
 // ---- 市场 ----
 const secId = c => (c[0]==='6'||c[0]==='9')?'1.'+c:'0.'+c;
@@ -194,6 +192,7 @@ function sinaJP(url,vn,t=8000){
   return new Promise(resolve=>{
     const s=document.createElement('script');
     s.setAttribute('data-cfasync','false');
+    s.referrerPolicy='no-referrer';
     const cleanup=()=>{try{delete window[vn]}catch{};s.parentNode&&s.parentNode.removeChild(s)};
     const tm=setTimeout(()=>{cleanup();resolve(null)},t);
     s.onload=()=>{clearTimeout(tm);const d=window[vn];cleanup();resolve(d)};
@@ -465,14 +464,11 @@ function render(){
   })}
 
   runAlerts(rows);
-  tb.innerHTML='';
   if(!rows.length){tb.innerHTML='<tr><td colspan="20" style="padding:30px;color:#ffd700">暂无自选股</td></tr>';return}
 
+  const frag=document.createDocumentFragment();
   rows.forEach((d,i)=>{
     const tr=document.createElement('tr');
-    const pp=LP[d.code];
-    if(pp!==undefined&&d.rt.last){if(d.rt.last>pp)tr.classList.add('fu');else if(d.rt.last<pp)tr.classList.add('fd')}
-    if(d.rt.last)LP[d.code]=d.rt.last;
 
     const rt=d.rt,dl=d.dl,ys=d.ys;
 
@@ -539,8 +535,9 @@ function render(){
       <td>${fp(dl.r10)}</td>
       <td>${fp(dl.r30)}</td>
       <td class="td-x" onclick="rmByCode('${d.code}')">删除</td>`;
-    tb.appendChild(tr);
+    frag.appendChild(tr);
   });
+  tb.replaceChildren(frag);
 
   document.getElementById('sCnt').textContent=WL.length;
   updTime();updInfo(rows);updTop(rows);
@@ -644,7 +641,7 @@ async function addStock(){const c=document.getElementById('iCode').value.trim();
   await Promise.all([fetchKL(c),fetchTR(c)]);render()}
 
 function delStock(){const c=document.getElementById('iDel').value.trim();rmByCode(c);document.getElementById('iDel').value=''}
-function rmByCode(c){const i=WL.findIndex(s=>s.code===c);if(i===-1)return;WL.splice(i,1);delete SD[c];delete LP[c];saveWL();render()}
+function rmByCode(c){const i=WL.findIndex(s=>s.code===c);if(i===-1)return;WL.splice(i,1);delete SD[c];saveWL();render()}
 
 // ---- 排序 ----
 document.querySelector('#tbl thead').addEventListener('click',e=>{const th=e.target.closest('th');if(!th?.dataset?.k)return;

@@ -685,7 +685,9 @@ document.querySelector('#tbl thead').addEventListener('click',e=>{const th=e.tar
   th.classList.add(sortD==='asc'?'sa':'sd');render()});
 
 // ---- 主题 ----
-function setTheme(t){t==='l'?document.body.classList.add('lt'):document.body.classList.remove('lt')}
+const TK='a_theme';
+function setTheme(t){t==='l'?document.body.classList.add('lt'):document.body.classList.remove('lt');localStorage.setItem(TK,t)}
+setTheme(localStorage.getItem(TK)||'l');
 
 // ---- 快捷键 ----
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.activeElement.id==='iCode')addStock();if(e.key==='Enter'&&document.activeElement.id==='iDel')delStock()});

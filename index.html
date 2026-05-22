@@ -124,7 +124,7 @@ body.lt{background:#f5f5f5;color:#333}
     <th>昨日高低</th><th data-k="openPct">开盘涨幅</th><th data-k="pct">最新/涨幅</th>
     <th data-k="pb">高点回撤</th><th data-k="rb">低点反弹</th><th>当日最高</th><th>当日最低</th>
     <th data-k="v100">100日大量</th><th data-k="amt">成交额</th>
-    <th>5日均价</th><th>10日均价</th><th>5-10差</th>
+    <th>5日均线</th><th>10日均线</th><th>5-10均线差</th>
     <th data-k="r5">5日涨幅</th><th data-k="r10">10日涨幅</th><th data-k="r30">30日涨幅</th>
     <th>删除</th>
   </tr></thead>
@@ -189,56 +189,28 @@ async function fetchRT(){
   }catch(e){return false}
 }
 
-// ---- 新浪JSONP (回调名在URL路径中) ----
-function jpSina(urlTpl,t=10000){
-  return new Promise((ok,no)=>{
-    const n='_s'+(++jid)+'_'+Date.now();
-    const url=urlTpl.replace('__CB__',n);
-    const s=document.createElement('script');
-    let d=false;
-    window[n]=r=>{if(d)return;d=true;ok(r);cl()};
-    s.onerror=()=>{if(d)return;d=true;no(new Error('sina err'));cl()};
-    const tm=setTimeout(()=>{if(d)return;d=true;no(new Error('sina timeout'));cl()},t);
-    function cl(){clearTimeout(tm);delete window[n];s.parentNode&&s.parentNode.removeChild(s)}
-    s.src=url;
-    document.head.appendChild(s);
-  });
-}
-
-// ---- 日K线 (新浪 JSONP) ----
+// ---- 日K线 (东方财富 fetch) ----
 async function fetchKL(c,n=120){
-  const sym=(c[0]==='6'||c[0]==='9')?'sh'+c:'sz'+c;
-  const url=`https://quotes.sina.cn/cn/api/jsonp_v2.php/__CB__/CN_MarketData.getKLineData?symbol=${sym}&scale=240&ma=no&datalen=${n}`;
   try{
-    const rows=await jpSina(url);
-    if(!rows||!rows.length){console.warn(`[KL] ${c} 无数据`);return}
-    const kl=rows.map(r=>({
-      d:r.day.slice(0,10), o:+r.open, c:+r.close, h:+r.high, l:+r.low,
-      v:+r.volume, a:(+r.close)*(+r.volume),  // 成交额≈收盘价*成交量
-      cp:0, ca:0, tr:0
-    }));
-    // 计算涨跌幅
-    for(let i=1;i<kl.length;i++){
-      kl[i].cp=kl[i-1].c?((kl[i].c/kl[i-1].c)-1)*100:0;
-    }
-    if(!SD[c])SD[c]={};SD[c].kl=kl;
+    const url=`https://push2his.eastmoney.com/api/qt/stock/kline/get?ut=fa5fd1943c7b386f172d6893dbfba10b&secid=${secId(c)}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&lmt=${n}`;
+    const resp=await fetch(url);
+    const r=await resp.json();
+    if(!r?.data?.klines?.length){console.warn(`[KL] ${c} 无数据`);return}
+    const kl=r.data.klines.map(l=>{const p=l.split(',');return{d:p[0],o:+p[1],c:+p[2],h:+p[3],l:+p[4],v:+p[5],a:+p[6],cp:+p[8],ca:+p[9],tr:+p[10]}});
+    if(!SD[c])SD[c]={};SD[c].kl=kl;SD[c].klN=r.data.name||c;
     console.log(`[KL] ${c} OK ${kl.length}条`);
   }catch(e){console.error(`[KL] ${c} 失败:`,e.message)}
 }
 
-// ---- 分时走势 (新浪 JSONP) ----
+// ---- 分时走势 (东方财富 fetch) ----
 async function fetchTR(c){
-  const sym=(c[0]==='6'||c[0]==='9')?'sh'+c:'sz'+c;
-  const url=`https://quotes.sina.cn/cn/api/jsonp_v2.php/__CB__/CN_MarketData.getKLineData?symbol=${sym}&scale=1&ma=no&datalen=260`;
   try{
-    const rows=await jpSina(url,6000);
-    if(!rows||!rows.length)return;
-    // 只取今日数据
-    const lastDay=rows[rows.length-1].day.slice(0,10);
-    const today=rows.filter(r=>r.day.startsWith(lastDay));
-    if(!today.length)return;
+    const url=`https://push2his.eastmoney.com/api/qt/stock/trends2/get?ut=fa5fd1943c7b386f172d6893dbfba10b&secid=${secId(c)}&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58`;
+    const resp=await fetch(url);
+    const r=await resp.json();
+    if(!r?.data?.trends?.length)return;
     if(!SD[c])SD[c]={};
-    SD[c].tr={pp:0,d:today.map(r=>({t:r.day,p:+r.close,avg:+r.open,v:+r.volume,a:(+r.close)*(+r.volume)}))};
+    SD[c].tr={pp:r.data.prePrice,d:r.data.trends.map(t=>{const p=t.split(',');return{t:p[0],p:+p[1],avg:+p[2],v:+p[3],a:+p[4]}})};
   }catch(e){console.warn(`[TR] ${c} 失败:`,e.message)}
 }
 

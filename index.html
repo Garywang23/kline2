@@ -628,8 +628,43 @@ function updMkt(){const el=document.getElementById('mktSt');
     else el.innerHTML='<span style="color:#f66">● 已收盘</span>'}}
 
 // ---- 自选股 ----
-function loadWL(){const s=localStorage.getItem(SK);WL=s?JSON.parse(s):DEF.map(s=>({code:s.code}));if(!s)saveWL()}
-function saveWL(){localStorage.setItem(SK,JSON.stringify(WL))}
+// ---- URL Hash 同步 (跨浏览器/设备分享自选股) ----
+function parseHash(){
+  const m=location.hash.match(/[#&]s=([^&]*)/);
+  if(!m)return null;
+  return m[1].split(',').map(c=>c.trim()).filter(c=>/^\d{6}$/.test(c)).map(c=>({code:c}));
+}
+function writeHash(){
+  const codes=WL.map(s=>s.code).join(',');
+  const newHash=codes?'#s='+codes:'';
+  const cur=location.hash;
+  if(cur!==newHash){
+    const url=newHash?location.pathname+location.search+newHash:location.pathname+location.search;
+    history.replaceState(null,'',url);
+  }
+}
+function loadWL(){
+  const fromHash=parseHash();
+  if(fromHash&&fromHash.length){WL=fromHash;localStorage.setItem(SK,JSON.stringify(WL));return}
+  const s=localStorage.getItem(SK);
+  WL=s?JSON.parse(s):DEF.map(s=>({code:s.code}));
+  if(!s)localStorage.setItem(SK,JSON.stringify(WL));
+  writeHash();
+}
+function saveWL(){localStorage.setItem(SK,JSON.stringify(WL));writeHash()}
+
+// 监听 hash 变化 (用户粘贴新 URL 时即时切换)
+window.addEventListener('hashchange',()=>{
+  const fromHash=parseHash();
+  if(!fromHash)return;
+  const cur=WL.map(s=>s.code).sort().join(',');
+  const next=fromHash.map(s=>s.code).sort().join(',');
+  if(cur===next)return;
+  WL=fromHash;
+  localStorage.setItem(SK,JSON.stringify(WL));
+  SD={};first=true;fc=0;
+  refresh();
+});
 
 async function addStock(){const c=document.getElementById('iCode').value.trim();
   if(!c||c.length!==6||!/^\d+$/.test(c))return alert('请输入6位代码');

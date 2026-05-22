@@ -101,7 +101,7 @@ body.lt{background:#f5f5f5;color:#333}
     <div>
       <div class="il"><span class="rn">回封确认</span> <span class="rc">现价涨停 + 买一有挂单 + 昨日强势（涨停/炸板）</span></div>
       <div class="il"><span class="rn">临板预警</span> <span class="rc">昨日强势 + 现价未涨停 + 开盘涨幅 > 5% + 涨幅 ≥ 7% + 高点回撤 > -2%</span></div>
-      <div class="il"><span class="rn">分歧承接</span> <span class="rc">昨日强势 + 开盘涨幅 > 2% + 涨幅 ≥ 4% + 低点反弹 ≥ 4% + 高点回撤 > -2.5% + 站上 MA5</span></div>
+      <div class="il"><span class="rn">分歧承接</span> <span class="rc">昨日强势 + 开盘涨幅 > 2% + 涨幅 ≥ 4% + 低点反弹 ≥ 3% + 高点回撤 > -2.5% + 站上 MA5</span></div>
       <div class="il"><span class="rn">弱转强确认</span> <span class="rc">昨日强势 + 开盘涨幅 -3%~+2% + 涨幅 ≥ 3% + 低点反弹 ≥ 3% + 高点回撤 > -2.5% + 站上 MA5</span></div>
     </div>
   </div>
@@ -147,7 +147,7 @@ const SIG = {
   kw: ['涨停','炸板'],
   hf: { name:'回封确认', on:true, needY:true },
   lb: { name:'临板预警', on:true, needY:true, minOpen:5, minPct:7, maxPB:-2 },
-  fq: { name:'分歧承接', on:true, needY:true, minPct:4, minBounce:4, maxPB:-2.5, minOpen:2, needMA5:true },
+  fq: { name:'分歧承接', on:true, needY:true, minPct:4, minBounce:3, maxPB:-2.5, minOpen:2, needMA5:true },
   rz: { name:'弱转强确认', on:true, needY:true, minPct:3, minBounce:3, maxPB:-2.5, minOpen:-3, maxOpen:2, needMA5:true },
 };
 const DEDUP = {'涨停':3600000,'炸板':600000,'临近涨停':480000,'弱转强':1200000,'分歧承接':900000,'破5日线':1800000,'破10日线':3600000,'高回撤':600000,'大跌':900000,_d:480000};

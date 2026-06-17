@@ -1,0 +1,570 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>日统计</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#111;font-family:"Microsoft YaHei",SimSun,serif;font-size:16px}
+.top{display:flex;align-items:center;gap:10px;background:#fff;color:#111;padding:7px 12px 8px;margin-bottom:0;border-bottom:1px solid #e5e5e5;white-space:nowrap;overflow:auto}
+.controls{display:flex;align-items:center;gap:10px;background:#fff;color:#111;padding:7px 12px 8px;margin-bottom:14px;border-bottom:1px solid #e5e5e5;white-space:nowrap;overflow:auto}
+.top label,.status-label{font-weight:400}
+.top input,.controls input{height:36px;border:1px solid #ccc;background:#fff;color:#111;border-radius:5px;padding:6px 10px;font:inherit}
+.status{color:#009933;white-space:nowrap}
+.btn{height:36px;border:1px solid #bbb;background:#f8f8f8;color:#111;border-radius:5px;padding:0 16px;font:inherit;cursor:pointer}
+.btn:hover{background:#eee}
+.btn.primary{border-color:#ffd326;background:#ffd326;color:#111;font-weight:700}
+.btn.danger{border-color:#ef4444;background:#ef4444;color:#fff;font-weight:700}
+.btn.small{padding:0 14px}
+.code-panel{display:flex;align-items:center;gap:10px;background:#fff;color:#111}
+.code-panel textarea{width:160px;height:36px;border:1px solid #ccc;background:#fff;color:#111;border-radius:5px;padding:4px 8px;font:14px Consolas,monospace;resize:vertical}
+.code-row{display:flex;flex-wrap:wrap;gap:4px;width:100%;min-height:30px;margin:0;padding:4px 8px;border-bottom:1px solid #e5e5e5;background:#fff}
+#codeTags{display:flex;flex-wrap:wrap;gap:4px;width:100%}
+.code-tag{position:relative;min-width:72px;border:1px solid #ccc;border-radius:4px;background:#f8f8f8;padding:3px 20px 3px 6px;font:13px Consolas,monospace}
+.code-tag.main{border-color:#8fb3e8;background:#eef5ff}
+.code-tag.chinext{border-color:#b99af0;background:#f6f0ff}
+.code-tag.star{border-color:#e8b36a;background:#fff6e8}
+.code-tag .code-text{display:block;font-weight:700}
+.code-tag .name-text{display:block;margin-top:1px;color:#555;font:11px "Microsoft YaHei",SimSun,serif}
+.code-tag button{position:absolute;right:3px;top:2px;border:0;background:transparent;color:#666;font-size:13px;line-height:16px;cursor:pointer}
+.code-tag button:hover{color:#f00}
+.layout{display:block}
+.codes{display:none}
+.table-wrap{overflow:auto;max-width:100%}
+table{border-collapse:collapse;white-space:nowrap}
+th,td{border:1px solid #e5e5e5;padding:4px 10px;text-align:center;min-width:72px;height:24px}
+th{font-weight:700;background:#fff}
+th.sortable{cursor:pointer;user-select:none}
+th.sorted{background:#f2f2f2}
+td.code,th.code{min-width:90px}
+td.seq,th.seq{min-width:56px}
+td.name,th.name{min-width:120px}
+td.base,th.base{min-width:90px}
+td.end,th.end{min-width:90px}
+td.total,th.total{min-width:90px}
+.pos{color:#f00}
+.neg{color:#009933}
+.flat{color:#333}
+.limit{background:#ffeb3b}
+.limit-dn{background:#b3d9ff}
+.page-switch{display:inline-block;background:#facc15;color:#111;text-decoration:none;border-radius:5px;padding:6px 16px;font-size:12px;font-weight:700}
+.page-switch:hover{background:#fbbf24}
+</style>
+</head>
+<body>
+<div class="top">
+  <label for="startDate">开始</label>
+  <input id="startDate" type="date" value="2026-06-02">
+  <label for="endDate">结束</label>
+  <input id="endDate" type="date" value="2026-06-17">
+  <button class="btn small" id="d5Btn">5</button>
+  <button class="btn small" id="d10Btn">10</button>
+  <button class="btn small" id="d30Btn">30</button>
+  <button class="btn primary" id="loadBtn">加载数据</button>
+  <div class="code-panel">
+    <label for="codeInput">代码</label>
+    <textarea id="codeInput" placeholder="可粘贴多个代码"></textarea>
+    <button class="btn danger" id="addCodeBtn">增加</button>
+  </div>
+  <button class="btn small" id="syncBtn">同步自选股</button>
+  <div class="status" id="status">等待获取</div>
+  <a class="page-switch" href="index.html" style="margin-left:auto">返回自选股</a>
+</div>
+
+<div class="code-row">
+  <textarea class="codes" id="codes"></textarea>
+  <div id="codeTags"></div>
+</div>
+
+<div class="layout">
+  <div class="table-wrap">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th class="seq">序号</th>
+          <th class="code">代码</th>
+          <th class="name">名称</th>
+          <th class="base">开始日</th>
+          <th class="end">结束日</th>
+          <th class="total">累计</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let jsonpId = 0;
+let currentResults = [];
+let sortState = { key: 'input', dir: 1 };
+let visibleTradeDays = 0;
+let codeNames = {};
+const storageKey = 'dayKlineCacheV1';
+
+const text = {
+  invalidDate: '日期区间无效',
+  noCode: '没有股票代码',
+  loading: '正在获取...',
+  loadingOne: '正在获取 ',
+  fail: '获取失败',
+  donePrefix: '完成，共 ',
+  doneSuffix: ' 只',
+  code: '代码',
+  name: '名称',
+  start: '开始日',
+  end: '结束日',
+  total: '累计'
+};
+
+function normalizeCode(input){
+  const c = String(input || '').trim().toLowerCase().replace(/\s/g, '');
+  if(/^(sh|sz|bj)\d{6}$/.test(c)) return c;
+  if(/^\d{6}$/.test(c)){
+    if(c[0] === '6') return 'sh' + c;
+    if(c[0] === '0' || c[0] === '3') return 'sz' + c;
+    if(c[0] === '4' || c[0] === '8') return 'bj' + c;
+  }
+  return '';
+}
+
+function codePlain(code){
+  return code.replace(/^(sh|sz|bj)/, '');
+}
+
+function boardClass(code){
+  if(code.startsWith('sh688')) return 'star';
+  if(code.startsWith('sz300') || code.startsWith('sz301')) return 'chinext';
+  return 'main';
+}
+
+function getCodeList(){
+  return $('codes').value.split(/\r?\n/).map(normalizeCode).filter(Boolean);
+}
+
+function renderCodeTags(codes){
+  $('codeTags').innerHTML = codes.map(code =>
+    '<span class="code-tag ' + boardClass(code) + '" data-code="' + code + '">' +
+    '<span class="code-text">' + codePlain(code) + '</span>' +
+    '<span class="name-text">' + esc(codeNames[code] || '') + '</span>' +
+    '<button type="button" data-code="' + code + '">x</button></span>'
+  ).join('');
+}
+
+function setCodeList(codes){
+  const unique = [];
+  const seen = new Set();
+  for(const code of codes.map(normalizeCode).filter(Boolean)){
+    if(seen.has(code)) continue;
+    seen.add(code);
+    unique.push(code);
+  }
+  $('codes').value = unique.map(codePlain).join('\n');
+  renderCodeTags(unique);
+  return unique;
+}
+
+function todayString(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function shiftCalendarDays(dateText, days){
+  const d = new Date(dateText + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function limitPct(code){
+  if(code.startsWith('bj')) return 30;
+  if(code.startsWith('sh688') || code.startsWith('sz300') || code.startsWith('sz301')) return 20;
+  return 10;
+}
+
+function clsPct(v){
+  return v > 0 ? 'pos' : v < 0 ? 'neg' : 'flat';
+}
+
+function fmtPct(v){
+  return v.toFixed(2) + '%';
+}
+
+function mdd(day){
+  const parts = day.split('-');
+  return String(Number(parts[1])) + String(parts[2]).padStart(2, '0');
+}
+
+function fetchKLine(code){
+  return new Promise((resolve, reject) => {
+    const id = '__day_k_' + (++jsonpId);
+    const script = document.createElement('script');
+    script.setAttribute('data-cfasync', 'false');
+    script.referrerPolicy = 'no-referrer';
+    let done = false;
+    let loaded = false;
+    const timer = setTimeout(() => finish(new Error('sina request timeout')), 10000);
+
+    function finish(err, data){
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      try{ delete window[id]; }catch(e){ window[id] = void 0; }
+      script.remove();
+      if(err) reject(err);
+      else resolve(data || []);
+    }
+
+    window[id] = null;
+    script.onload = () => {
+      loaded = true;
+      const data = window[id];
+      finish(null, Array.isArray(data) ? data : []);
+    };
+    script.onerror = () => finish(new Error('sina request failed'));
+    script.src = 'https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20' + id +
+      '=/CN_MarketData.getKLineData?symbol=' + code + '&scale=240&ma=no&datalen=800';
+    document.head.appendChild(script);
+  });
+}
+
+function fetchName(code){
+  return new Promise(resolve => {
+    const script = document.createElement('script');
+    script.setAttribute('data-cfasync', 'false');
+    script.referrerPolicy = 'no-referrer';
+    const key = 'v_' + code;
+    let done = false;
+    const timer = setTimeout(() => finish(''), 6000);
+
+    function finish(name){
+      if(done) return;
+      done = true;
+      clearTimeout(timer);
+      script.remove();
+      resolve(name || '');
+    }
+
+    script.onload = () => {
+      const raw = window[key] || '';
+      const parts = String(raw).split('~');
+      finish(parts[1] || '');
+    };
+    script.onerror = () => finish('');
+    script.src = 'https://qt.gtimg.cn/q=' + code;
+    document.head.appendChild(script);
+  });
+}
+
+function buildRows(raw, start, end){
+  const rows = raw
+    .filter(r => r && r.day && Number(r.close) > 0)
+    .map(r => ({ day: r.day, close: Number(r.close) }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+  const before = rows.filter(r => r.day < start).pop() || null;
+  const inRange = rows.filter(r => r.day >= start && r.day <= end);
+  return { before, inRange, rows };
+}
+
+async function load(){
+  const start = $('startDate').value;
+  const end = $('endDate').value;
+  const codes = getCodeList();
+  visibleTradeDays = 0;
+
+  if(!start || !end || start > end){
+    $('status').textContent = text.invalidDate;
+    return;
+  }
+  if(!codes.length){
+    $('status').textContent = text.noCode;
+    return;
+  }
+
+  $('status').textContent = text.loading;
+  const results = [];
+
+  for(let i = 0; i < codes.length; i++){
+    const code = codes[i];
+    $('status').textContent = text.loadingOne + (i + 1) + '/' + codes.length + ' ' + codePlain(code);
+    try{
+      const pair = await Promise.all([fetchKLine(code), fetchName(code)]);
+      const built = buildRows(pair[0], start, end);
+      if(pair[1]) codeNames[code] = pair[1];
+      results.push({ code, name: pair[1], before: built.before, inRange: built.inRange, rows: built.rows });
+    }catch(e){
+      results.push({ code, name: text.fail, before: null, inRange: [] });
+    }
+  }
+
+  render(results);
+  renderCodeTags(codes);
+  saveCache({ start, end, codes, results });
+  $('status').textContent = text.donePrefix + results.length + text.doneSuffix;
+}
+
+function showLastTradeDays(count){
+  if(currentResults.length){
+    const allDays = getVisibleAllDays(currentResults);
+    const days = allDays.slice(-count);
+    if(days.length) $('startDate').value = days[0];
+  }
+}
+
+function getVisibleAllDays(results){
+  return [...new Set(results.flatMap(r => {
+    const rows = Array.isArray(r.rows) ? r.rows : r.inRange;
+    return rows.map(x => x.day);
+  }))].sort();
+}
+
+function saveCache(payload){
+  try{
+    localStorage.setItem(storageKey, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      start: payload.start,
+      end: payload.end,
+      codes: payload.codes,
+      names: codeNames,
+      results: payload.results
+    }));
+  }catch(e){}
+}
+
+function restoreCache(){
+  try{
+    const raw = localStorage.getItem(storageKey);
+    if(!raw) return;
+    const cache = JSON.parse(raw);
+    if(!cache || !Array.isArray(cache.results)) return;
+    if(cache.start) $('startDate').value = cache.start;
+    if(cache.end) $('endDate').value = cache.end;
+    codeNames = cache.names || {};
+    for(const row of cache.results){
+      if(row && row.code && row.name) codeNames[row.code] = row.name;
+    }
+    const savedCodes = Array.isArray(cache.codes) && cache.codes.length
+      ? cache.codes
+      : cache.results.map(r => r && r.code).filter(Boolean);
+    if(savedCodes.length) setCodeList(savedCodes);
+    render(cache.results);
+    $('status').textContent = text.donePrefix + cache.results.length + text.doneSuffix;
+  }catch(e){}
+}
+
+function clearCache(){
+  if(!confirm('确认清空已保存的查询数据？')) return;
+  try{
+    localStorage.removeItem(storageKey);
+  }catch(e){}
+  currentResults = [];
+  sortState = { key: 'input', dir: 1 };
+  $('tbl').tHead.rows[0].innerHTML =
+    '<th class="code">' + text.code + '</th>' +
+    '<th class="name">' + text.name + '</th>' +
+    '<th class="base">' + text.start + '</th>' +
+    '<th class="end">' + text.end + '</th>' +
+    '<th class="total">' + text.total + '</th>';
+  $('tbl').tBodies[0].innerHTML = '';
+  $('status').textContent = '已删除保存数据';
+}
+
+async function addCode(){
+  const inputCodes = $('codeInput').value.split(/[^0-9a-zA-Z]+/).map(normalizeCode).filter(Boolean);
+  if(!inputCodes.length){
+    $('status').textContent = text.noCode;
+    return;
+  }
+  const codes = setCodeList(getCodeList().concat(inputCodes));
+  $('codeInput').value = '';
+  $('status').textContent = '正在获取名称...';
+  for(const code of inputCodes){
+    if(codeNames[code]) continue;
+    codeNames[code] = await fetchName(code);
+    renderCodeTags(codes);
+  }
+  $('status').textContent = '已增加 ' + inputCodes.length + ' 个代码';
+  saveCache({
+    start: $('startDate').value,
+    end: $('endDate').value,
+    codes,
+    results: currentResults
+  });
+}
+
+function deleteCode(code){
+  const target = normalizeCode(code);
+  if(!target) return;
+  let codes = getCodeList().filter(item => item !== target);
+  codes = setCodeList(codes);
+  currentResults = currentResults.filter(r => codes.includes(r.code));
+  render(currentResults);
+  saveCache({
+    start: $('startDate').value,
+    end: $('endDate').value,
+    codes,
+    results: currentResults
+  });
+  $('status').textContent = '已删除代码';
+}
+
+function esc(value){
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+function makeHeader(label, key, extraClass){
+  const active = sortState.key === key;
+  const mark = active ? (sortState.dir > 0 ? ' +' : ' -') : '';
+  const cls = (extraClass ? extraClass + ' ' : '') + 'sortable' + (active ? ' sorted' : '');
+  return '<th class="' + cls + '" data-sort="' + key + '">' + label + mark + '</th>';
+}
+
+function compareRows(a, b){
+  const key = sortState.key;
+  if(key === 'input') return (a.index - b.index) * sortState.dir;
+  const av = a.sorts[key];
+  const bv = b.sorts[key];
+  const aBlank = av == null || av === '';
+  const bBlank = bv == null || bv === '';
+  if(aBlank && bBlank) return (a.index - b.index) * sortState.dir;
+  if(aBlank) return 1;
+  if(bBlank) return -1;
+  if(typeof av === 'number' && typeof bv === 'number'){
+    return (av - bv || a.index - b.index) * sortState.dir;
+  }
+  return (String(av).localeCompare(String(bv), 'zh-CN') || a.index - b.index) * sortState.dir;
+}
+
+function render(results){
+  currentResults = results;
+  const allDays = getVisibleAllDays(results);
+  const start = $('startDate').value;
+  const end = $('endDate').value;
+  const days = allDays.filter(day => (!start || day >= start) && (!end || day <= end));
+  const head = $('tbl').tHead.rows[0];
+  head.innerHTML = makeHeader('序号', 'input', 'seq') +
+    makeHeader(text.code, 'code', 'code') +
+    makeHeader(text.name, 'name', 'name') +
+    makeHeader(text.start, 'base', 'base') +
+    days.map(d => makeHeader(mdd(d), 'day:' + d)).join('') +
+    makeHeader(text.end, 'end', 'end') +
+    makeHeader(text.total, 'total', 'total');
+
+  const body = $('tbl').tBodies[0];
+  body.innerHTML = '';
+
+  const rows = results.map((r, index) => {
+    const sourceRows = Array.isArray(r.rows) ? r.rows : [r.before].concat(r.inRange).filter(Boolean);
+    const sortedRows = sourceRows.slice().sort((a, b) => a.day.localeCompare(b.day));
+    const byDay = new Map(sortedRows.map(x => [x.day, x]));
+    const firstDay = days[0] || '';
+    const beforeVisible = sortedRows.filter(x => x.day < firstDay).pop() || r.before;
+    let prev = beforeVisible ? beforeVisible.close : NaN;
+    let lastClose = NaN;
+    const cells = [
+      '<td class="seq">' + (index + 1) + '</td>',
+      '<td class="code">' + esc(codePlain(r.code)) + '</td>',
+      '<td class="name">' + esc(r.name || '') + '</td>',
+      '<td class="base">' + (Number.isFinite(prev) ? prev.toFixed(2) : '') + '</td>'
+    ];
+    const sorts = {
+      code: codePlain(r.code),
+      name: r.name || '',
+      base: Number.isFinite(prev) ? prev : null
+    };
+
+    for(const d of days){
+      const row = byDay.get(d);
+      if(row && Number.isFinite(prev) && prev > 0){
+        const pct = (row.close / prev - 1) * 100;
+        const hitLimit = Math.abs(Math.abs(pct) - limitPct(r.code)) <= 0.15;
+        const limitCls = hitLimit ? (pct > 0 ? ' limit' : ' limit-dn') : '';
+        cells.push('<td class="' + clsPct(pct) + limitCls + '">' + fmtPct(pct) + '</td>');
+        sorts['day:' + d] = pct;
+        prev = row.close;
+        lastClose = row.close;
+      }else{
+        cells.push('<td></td>');
+        sorts['day:' + d] = null;
+      }
+    }
+
+    const base = beforeVisible ? beforeVisible.close : NaN;
+    const total = Number.isFinite(base) && Number.isFinite(lastClose) && base > 0
+      ? (lastClose / base - 1) * 100
+      : NaN;
+    cells.push('<td class="end">' + (Number.isFinite(lastClose) ? lastClose.toFixed(2) : '') + '</td>');
+    cells.push('<td class="total ' + (Number.isFinite(total) ? clsPct(total) : '') + '">' + (Number.isFinite(total) ? fmtPct(total) : '') + '</td>');
+    sorts.end = Number.isFinite(lastClose) ? lastClose : null;
+    sorts.total = Number.isFinite(total) ? total : null;
+    return { index, cells, sorts };
+  }).sort(compareRows);
+
+  for(const row of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = row.cells.join('');
+    body.appendChild(tr);
+  }
+}
+
+$('tbl').tHead.addEventListener('click', event => {
+  const th = event.target.closest('th[data-sort]');
+  if(!th || !currentResults.length) return;
+  const key = th.getAttribute('data-sort');
+  if(sortState.key === key){
+    sortState.dir *= -1;
+  }else{
+    sortState = { key, dir: 1 };
+  }
+  render(currentResults);
+});
+
+$('loadBtn').addEventListener('click', load);
+$('d5Btn').addEventListener('click', () => showLastTradeDays(5));
+$('d10Btn').addEventListener('click', () => showLastTradeDays(10));
+$('d30Btn').addEventListener('click', () => showLastTradeDays(30));
+$('addCodeBtn').addEventListener('click', addCode);
+$('syncBtn').addEventListener('click', () => {
+  try{
+    const raw = localStorage.getItem('a_stk_v5');
+    if(!raw){ $('status').textContent = '自选股无数据'; return }
+    const indexCodes = JSON.parse(raw).map(s => s.code).filter(Boolean);
+    if(!indexCodes.length){ $('status').textContent = '自选股为空'; return }
+    const existing = getCodeList();
+    const merged = [...existing];
+    for(const c of indexCodes){
+      const norm = normalizeCode(c);
+      if(norm && !merged.includes(norm)) merged.push(norm);
+    }
+    if(merged.length === existing.length){ $('status').textContent = '已同步，无新增'; return }
+    setCodeList(merged);
+    $('status').textContent = '已同步 ' + (merged.length - existing.length) + ' 只自选股';
+    load();
+  }catch(e){
+    $('status').textContent = '同步失败: ' + e.message;
+  }
+});
+$('codeTags').addEventListener('click', event => {
+  const btn = event.target.closest('button[data-code]');
+  if(btn) deleteCode(btn.getAttribute('data-code'));
+});
+$('codeInput').addEventListener('keydown', event => {
+  if(event.key === 'Enter') addCode();
+});
+restoreCache();
+</script>
+</body>
+</html>

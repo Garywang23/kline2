@@ -21,10 +21,10 @@ body{margin:0;background:#fff;color:#111;font-family:"Microsoft YaHei",SimSun,se
 .code-panel textarea{width:160px;height:36px;border:1px solid #ccc;background:#fff;color:#111;border-radius:5px;padding:4px 8px;font:14px Consolas,monospace;resize:vertical}
 .code-row{display:flex;flex-wrap:wrap;gap:4px;width:100%;min-height:30px;margin:0;padding:4px 8px;border-bottom:1px solid #e5e5e5;background:#fff}
 #codeTags{display:flex;flex-wrap:wrap;gap:4px;width:100%}
-.code-tag{position:relative;min-width:72px;border:1px solid #ccc;border-radius:4px;background:#f8f8f8;padding:3px 20px 3px 6px;font:13px Consolas,monospace}
-.code-tag.main{border-color:#8fb3e8;background:#eef5ff}
-.code-tag.chinext{border-color:#b99af0;background:#f6f0ff}
-.code-tag.star{border-color:#e8b36a;background:#fff6e8}
+.code-tag{position:relative;min-width:72px;border:1px solid #999;border-radius:4px;background:#f8f8f8;padding:3px 20px 3px 6px;font:13px Consolas,monospace}
+.code-tag.main{border-color:#dc2626;background:#fee2e2}
+.code-tag.chinext{border-color:#0f766e;background:#ccfbf1}
+.code-tag.star{border-color:#1e3a8a;background:#bfdbfe}
 .code-tag .code-text{display:block;font-weight:700}
 .code-tag .name-text{display:block;margin-top:1px;color:#555;font:11px "Microsoft YaHei",SimSun,serif}
 .code-tag button{position:absolute;right:3px;top:2px;border:0;background:transparent;color:#666;font-size:13px;line-height:16px;cursor:pointer}
@@ -43,6 +43,8 @@ td.name,th.name{min-width:120px}
 td.base,th.base{min-width:90px}
 td.end,th.end{min-width:90px}
 td.total,th.total{min-width:90px}
+td.high,th.high{min-width:90px}
+td.high-gap,th.high-gap{min-width:100px}
 .pos{color:#f00}
 .neg{color:#009933}
 .flat{color:#333}
@@ -88,6 +90,8 @@ td.total,th.total{min-width:90px}
           <th class="base">开始日</th>
           <th class="end">结束日</th>
           <th class="total">累计</th>
+          <th class="high">最高价</th>
+          <th class="high-gap">高点差</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -116,7 +120,9 @@ const text = {
   name: '名称',
   start: '开始日',
   end: '结束日',
-  total: '累计'
+  total: '累计',
+  high: '最高价',
+  highGap: '高点差'
 };
 
 function normalizeCode(input){
@@ -161,6 +167,7 @@ function setCodeList(codes){
     seen.add(code);
     unique.push(code);
   }
+  unique.sort((a, b) => codePlain(a).localeCompare(codePlain(b), 'zh-CN', { numeric: true }));
   $('codes').value = unique.map(codePlain).join('\n');
   renderCodeTags(unique);
   return unique;
@@ -209,8 +216,7 @@ function fetchKLine(code){
     script.setAttribute('data-cfasync', 'false');
     script.referrerPolicy = 'no-referrer';
     let done = false;
-    let loaded = false;
-    const timer = setTimeout(() => finish(new Error('sina request timeout')), 10000);
+    const timer = setTimeout(() => finish(new Error('tencent qfq request timeout')), 10000);
 
     function finish(err, data){
       if(done) return;
@@ -224,13 +230,25 @@ function fetchKLine(code){
 
     window[id] = null;
     script.onload = () => {
-      loaded = true;
       const data = window[id];
-      finish(null, Array.isArray(data) ? data : []);
+      const stock = data && data.data && data.data[code];
+      const arr = stock && (stock.qfqday || stock.day);
+      if(!Array.isArray(arr)){
+        finish(null, []);
+        return;
+      }
+      finish(null, arr.map(r => ({
+        day: r[0],
+        open: r[1],
+        close: r[2],
+        high: r[3],
+        low: r[4],
+        volume: r[5]
+      })));
     };
-    script.onerror = () => finish(new Error('sina request failed'));
-    script.src = 'https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20' + id +
-      '=/CN_MarketData.getKLineData?symbol=' + code + '&scale=240&ma=no&datalen=800';
+    script.onerror = () => finish(new Error('tencent qfq request failed'));
+    script.src = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=' +
+      code + ',day,,,800,qfq&_var=' + id;
     document.head.appendChild(script);
   });
 }
@@ -266,7 +284,7 @@ function fetchName(code){
 function buildRows(raw, start, end){
   const rows = raw
     .filter(r => r && r.day && Number(r.close) > 0)
-    .map(r => ({ day: r.day, close: Number(r.close) }))
+    .map(r => ({ day: r.day, close: Number(r.close), high: Number(r.high || r.close) }))
     .sort((a, b) => a.day.localeCompare(b.day));
   const before = rows.filter(r => r.day < start).pop() || null;
   const inRange = rows.filter(r => r.day >= start && r.day <= end);
@@ -371,7 +389,10 @@ function clearCache(){
     '<th class="name">' + text.name + '</th>' +
     '<th class="base">' + text.start + '</th>' +
     '<th class="end">' + text.end + '</th>' +
-    '<th class="total">' + text.total + '</th>';
+    '<th class="total">' + text.total + '</th>' +
+    '<th class="high">' + text.high + '</th>' +
+    '<th class="high-gap">' + text.highGap + '</th>' +
+    '<th class="name">' + text.name + '</th>';
   $('tbl').tBodies[0].innerHTML = '';
   $('status').textContent = '已删除保存数据';
 }
@@ -461,7 +482,10 @@ function render(results){
     makeHeader(text.start, 'base', 'base') +
     days.map(d => makeHeader(mdd(d), 'day:' + d)).join('') +
     makeHeader(text.end, 'end', 'end') +
-    makeHeader(text.total, 'total', 'total');
+    makeHeader(text.total, 'total', 'total') +
+    makeHeader(text.high, 'high', 'high') +
+    makeHeader(text.highGap, 'highGap', 'high-gap') +
+    makeHeader(text.name, 'tailName', 'name');
 
   const body = $('tbl').tBodies[0];
   body.innerHTML = '';
@@ -472,12 +496,15 @@ function render(results){
     const byDay = new Map(sortedRows.map(x => [x.day, x]));
     const firstDay = days[0] || '';
     const beforeVisible = sortedRows.filter(x => x.day < firstDay).pop() || r.before;
-    let prev = beforeVisible ? beforeVisible.close : NaN;
+    const firstVisible = days.map(d => byDay.get(d)).find(Boolean) || null;
+    const baseRow = beforeVisible || firstVisible;
+    let prev = baseRow ? baseRow.close : NaN;
     let lastClose = NaN;
+    const board = boardClass(r.code);
     const cells = [
       '<td class="seq">' + (index + 1) + '</td>',
-      '<td class="code">' + esc(codePlain(r.code)) + '</td>',
-      '<td class="name">' + esc(r.name || '') + '</td>',
+      '<td class="code code-tag ' + board + '">' + esc(codePlain(r.code)) + '</td>',
+      '<td class="name code-tag ' + board + '">' + esc(r.name || '') + '</td>',
       '<td class="base">' + (Number.isFinite(prev) ? prev.toFixed(2) : '') + '</td>'
     ];
     const sorts = {
@@ -502,14 +529,33 @@ function render(results){
       }
     }
 
-    const base = beforeVisible ? beforeVisible.close : NaN;
+    const base = baseRow ? baseRow.close : NaN;
     const total = Number.isFinite(base) && Number.isFinite(lastClose) && base > 0
       ? (lastClose / base - 1) * 100
       : NaN;
+    const visibleRows = sortedRows.filter(row =>
+      (!start || row.day >= start) && (!end || row.day <= end)
+    );
+    let highPrice = NaN;
+    for(const row of visibleRows){
+      const high = Number.isFinite(row.high) ? row.high : row.close;
+      if(Number.isFinite(high) && (!Number.isFinite(highPrice) || high > highPrice)){
+        highPrice = high;
+      }
+    }
+    const highGap = Number.isFinite(highPrice) && Number.isFinite(lastClose) && lastClose > 0
+      ? ((lastClose - highPrice) / lastClose) * 100
+      : NaN;
     cells.push('<td class="end">' + (Number.isFinite(lastClose) ? lastClose.toFixed(2) : '') + '</td>');
     cells.push('<td class="total ' + (Number.isFinite(total) ? clsPct(total) : '') + '">' + (Number.isFinite(total) ? fmtPct(total) : '') + '</td>');
+    cells.push('<td class="high">' + (Number.isFinite(highPrice) ? highPrice.toFixed(2) : '') + '</td>');
+    cells.push('<td class="high-gap ' + (Number.isFinite(highGap) ? clsPct(highGap) : '') + '">' + (Number.isFinite(highGap) ? fmtPct(highGap) : '') + '</td>');
+    cells.push('<td class="name code-tag ' + board + '">' + esc(r.name || '') + '</td>');
     sorts.end = Number.isFinite(lastClose) ? lastClose : null;
     sorts.total = Number.isFinite(total) ? total : null;
+    sorts.high = Number.isFinite(highPrice) ? highPrice : null;
+    sorts.highGap = Number.isFinite(highGap) ? highGap : null;
+    sorts.tailName = r.name || '';
     return { index, cells, sorts };
   }).sort(compareRows);
 
